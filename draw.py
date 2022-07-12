@@ -18,11 +18,11 @@ with open("cities.tsv") as f:
 cities = sorted(cities, key=lambda x: x[0])  # sort by city name
 
 GRADIENTS = {
-    "num": ("#ff0000", [str(i) for i in range(1, 100)]),  # TODO: make logarithmic?
+    "num": ("#e00000", [str(i) for i in range(1, 100)]),
     "presidents": ("#00ff00", presidents),
-    "states": ("#0000ff", states),
+    "states": ("#26e026", states),
 }
-PLACEHOLDER = "#999999"
+PLACEHOLDER = "#444444"
 
 
 def gradient_color(name: str, street_name: str):
@@ -34,10 +34,11 @@ def gradient_color(name: str, street_name: str):
             match_value == street_name if name == "num" else match_value in street_name
         )
         if condition:
-            clr = colorsys.rgb_to_hsv(*mc.to_rgb(base))
-            return colorsys.hsv_to_rgb(
-                clr[0], clr[1] * (1 - (idx / len(values))), clr[2]
-            )  # the end white value is considered just outside the list
+            return base
+            # clr = colorsys.rgb_to_hsv(*mc.to_rgb(base))
+            # return colorsys.hsv_to_rgb(
+            #     clr[0], clr[1] * (1 - (idx / len(values))), clr[2]
+            # )  # the end white value is considered just outside the list
     return None
 
 
@@ -59,8 +60,8 @@ def road_color(name):
     return PLACEHOLDER
 
 
-def plot_center(center, filename):
-    lat, long = [float(i) for i in center.split(", ")]
+def plot_center(coords, filename):
+    lat, long = coords
     roads = ox.graph_from_point(
         (lat, long), dist=radius, truncate_by_edge=True, network_type="drive"
     )
@@ -71,9 +72,11 @@ def plot_center(center, filename):
         bbox=bbox,
         node_size=0,
         edge_color=ec,
+        edge_linewidth=1.8,
         show=False,
         close=False,
-        bgcolor="#00000000",
+        bgcolor="#fafafa",
+        # bgcolor="#00000000",  # transparent
     )
     # fig, ax = ox.plot_figure_ground(
     #     roads,
@@ -85,12 +88,28 @@ def plot_center(center, filename):
     #     bgcolor="#000000ff",
     # )
     ax.scatter(long, lat, c="#dd0000")
+    # remove the padding
+    # ax.get_xaxis().set_visible(True)
+    # ax.get_yaxis().set_visible(True)
     # plt.Circle((long, lat), radius, color="#aaaaaa", fill=False)
-    plt.savefig(filename)
+
+    fig.set_frameon(False)
+    fig.savefig(f"{filename}.png", dpi=300, bbox_inches="tight", pad_inches=0)
+    plt.close()
+
+
+def to_lat_long(center):
+    # Splits string into floats (lat, long)
+    return [float(i) for i in center.split(", ")]
 
 
 for i, (city, stn_coord, city_hall_coord) in enumerate(cities):
     print(city)
     # TODO: strip out relevant coords or whatever
-    plot_center(stn_coord, f"{i+1}a.svg")
-    plot_center(city_hall_coord, f"{i+1}b.svg")
+    coords = sorted(
+        [to_lat_long(coord) for coord in [stn_coord, city_hall_coord]],
+        key=lambda x: x[1],
+    )
+    plot_center(coords[0], f"{i+1}a")
+    plot_center(coords[1], f"{i+1}b")
+    exit()
