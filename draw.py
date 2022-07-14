@@ -80,11 +80,14 @@ def road_color(name):
 def plot_center(coords, filename):
     lat, long = coords
     roads = ox.graph_from_point(
-        (lat, long), dist=radius, truncate_by_edge=True, network_type="drive"
+        (lat, long),
+        dist=radius,
+        truncate_by_edge=True,
+        network_type="drive",
+        simplify=False,  # see SW 1st becoming SW Washington in Portland
     )
     bbox = utils_geo.bbox_from_point((lat, long), radius)
     ec = [road_color(data.get("name")) for u, v, data in roads.edges(data=True)]
-    return ()
     fig, ax = ox.plot_graph(
         roads,
         bbox=bbox,
