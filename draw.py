@@ -1,3 +1,4 @@
+from collections import defaultdict
 import osmnx as ox
 from osmnx import utils_geo
 import re
@@ -6,6 +7,7 @@ import matplotlib.colors as mc
 import matplotlib.pyplot as plt
 from data import presidents, states
 
+kws = defaultdict(set)
 
 radius = 500  # meters
 # centers = ["47.68199601897163, -122.35506428651688"]  # seattle fire station
@@ -30,10 +32,18 @@ def gradient_color(name: str, street_name: str):
 
     base, values = GRADIENTS[name]
     for idx, match_value in enumerate(values):
-        condition = (
-            match_value == street_name if name == "num" else match_value in street_name
-        )
+        if name == "num":
+            condition = match_value == street_name
+        elif name == "presidents":
+            condition = (
+                any(match_value == keyword for keyword in street_name.split(" "))
+                and not "pierce elevated" in street_name  # houston
+            )
+        else:  # "states"
+            condition = match_value in street_name
         if condition:
+            kws[match_value].add(street_name)
+            # print("MATCH:", match_value, "STREET NAME:", street_name)
             return base
             # clr = colorsys.rgb_to_hsv(*mc.to_rgb(base))
             # return colorsys.hsv_to_rgb(
@@ -45,11 +55,18 @@ def gradient_color(name: str, street_name: str):
 def road_color(name):
     if name is None:
         return PLACEHOLDER
-    name = "".join(name).lower()
+    if isinstance(name, list):
+        name = " ".join(name)
+    name = name.lower()
     keywords = name.split(" ")
 
     for keyword in keywords:
         nums = re.findall("\d+", keyword)
+        # remove a busway in LA
+        # if keyword == "10" or keyword == "i-10":
+        if not any(keyword.endswith(suffix) for suffix in ["st", "th", "rd"]):
+            continue
+        # fun fact, DC has a 13½ street (on gmaps this is 13 1/2)
         if nums:
             number = nums[0]
             return gradient_color("num", number)
@@ -67,6 +84,7 @@ def plot_center(coords, filename):
     )
     bbox = utils_geo.bbox_from_point((lat, long), radius)
     ec = [road_color(data.get("name")) for u, v, data in roads.edges(data=True)]
+    return ()
     fig, ax = ox.plot_graph(
         roads,
         bbox=bbox,
@@ -112,4 +130,5 @@ for i, (city, stn_coord, city_hall_coord) in enumerate(cities):
     )
     plot_center(coords[0], f"{i+1}a")
     plot_center(coords[1], f"{i+1}b")
-    exit()
+
+print(kws)
