@@ -1,7 +1,8 @@
 from collections import defaultdict
 from numpy import full
 import osmnx as ox
-from osmnx import utils_geo
+import networkx as nx
+from osmnx import utils_geo, simplification
 import re
 import colorsys
 import matplotlib.colors as mc
@@ -29,6 +30,9 @@ def custom_new_gc(self):
 
 RendererBase.new_gc = types.MethodType(custom_new_gc, RendererBase)
 
+import matplotlib
+matplotlib.use('tkagg')
+
 # ----------------------------------------------------------------------
 
 
@@ -44,12 +48,27 @@ with open("cities.tsv") as f:
         cities.append(l)
 cities = sorted(cities, key=lambda x: x[0])  # sort by city name
 
+# DEBUG
+# radius = 50
+# cities = [["dc", "38.94369946166307, -77.08035303293433", "38.94369946166307, -77.08035303293433"]]
+
+RED = "#e00000"
+GREEN = "#26e026"
+BLUE = "#4370cd"
+
 GRADIENTS = {
-    "num": ("#e00000", [str(i) for i in range(1, 100)]),
-    "presidents": ("#26e026", presidents),
-    "states": ("#4370cd", states),
+    "num": (RED, [str(i) for i in range(1, 100)]),
+    "presidents": (GREEN, presidents),
+    "states": (BLUE, states),
 }
 PLACEHOLDER = "#444444"
+
+LINE_STYLES = {
+    PLACEHOLDER: "solid",
+    RED: "dashed",
+    GREEN: "dashdot",
+    BLUE: "dotted"
+}
 
 
 def gradient_color(name: str, street_name: str):
@@ -93,7 +112,7 @@ def road_color(name):
         nums = re.findall("\d+", keyword)
         # remove a busway in LA
         # if keyword == "10" or keyword == "i-10":
-        if not any(keyword.endswith(suffix) for suffix in ["st", "th", "rd"]):
+        if not any(keyword.endswith(suffix) for suffix in ["st", "nd", "rd", "th"]):
             continue
         # fun fact, DC has a 13½ street (on gmaps this is 13 1/2)
         if nums:
@@ -104,6 +123,20 @@ def road_color(name):
         if color:
             return color
     return PLACEHOLDER
+
+
+def process_subgraph(subgraph):
+    from osmnx import utils_graph
+    if len(subgraph.edges()) == 0:
+        return None
+    subgraph = simplification.simplify_graph(subgraph)
+    undirected = utils_graph.get_undirected(subgraph)
+    return undirected
+    undirected = nx.MultiGraph(subgraph)
+    ret = nx.MultiDiGraph()
+    ret.add_edges_from(undirected.edges)
+    print(ret)
+    return ret
 
 
 def plot_center(coords, filename):
@@ -122,9 +155,9 @@ def plot_center(coords, filename):
     ]
     subgraphs = [
         (
-            roads.edge_subgraph(
+            process_subgraph(roads.edge_subgraph(
                 [edge for edge, clr in edges_with_colors if clr == desired_clr]
-            ),
+            )),
             desired_clr,
         )
         # most to least common
@@ -143,8 +176,11 @@ def plot_center(coords, filename):
     #     edge_zorder.append(zorder)
     ax = None
     for subgraph, desired_clr in subgraphs:
+        if not subgraph:
+            continue
         if len(subgraph.edges()) == 0:
             continue
+        # print(subgraph.edges())
         fig, ax = ox.plot_graph(
             subgraph,
             ax=ax,
@@ -157,6 +193,7 @@ def plot_center(coords, filename):
             close=False,
             bgcolor="#fafafa",
             # bgcolor="#00000000",  # transparent
+            linestyle=LINE_STYLES[desired_clr],
         )
     # fig, ax = ox.plot_figure_ground(
     #     roads,
