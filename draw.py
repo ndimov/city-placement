@@ -176,8 +176,7 @@ def plot_center(coords, filename):
 
     img = Image.open(full_filename)
     img_w, img_h = img.size
-    # Thanks to Jacqui for providing the marker pin art asset!
-    marker = Image.open("pin-jacqui-b.png").convert("RGBA")
+    marker = Image.open("pin.png").convert("RGBA")
     old_marker_w, old_marker_h = marker.size
     marker = marker.resize((100, int(old_marker_h / old_marker_w * 100)))
     marker_w, marker_h = marker.size
