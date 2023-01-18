@@ -46,7 +46,6 @@ trump
 biden"""
 
 presidents = presidents_raw.split("\n")
-print(presidents)
 
 states_raw = """delaware
 pennsylvania
@@ -100,4 +99,3 @@ alaska
 hawaii"""
 
 states = states_raw.split("\n")
-print(states)

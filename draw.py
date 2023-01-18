@@ -1,10 +1,8 @@
 from collections import defaultdict
-from numpy import full
 import osmnx as ox
 import networkx as nx
 from osmnx import utils_geo, simplification
 import re
-import colorsys
 import matplotlib.colors as mc
 import matplotlib.pyplot as plt
 from data import presidents, states
@@ -21,7 +19,6 @@ class GC(GraphicsContextBase):
     def __init__(self):
         super().__init__()
         self._capstyle = "round"
-        # self._joinstyle = "round"
 
 
 def custom_new_gc(self):
@@ -30,46 +27,36 @@ def custom_new_gc(self):
 
 RendererBase.new_gc = types.MethodType(custom_new_gc, RendererBase)
 
+# Per https://stackoverflow.com/a/74113918 this is a workaround for a bug in pyside
 import matplotlib
-matplotlib.use('tkagg')
+
+matplotlib.use("tkagg")
 
 # ----------------------------------------------------------------------
 
+RED = "#e00000"
+GREEN = "#26e026"
+BLUE = "#4370cd"
 
-kws = defaultdict(set)
+# An old version of this puzzle used gradients within each color
+# based on the value's position in the corresponding list
+GRADIENTS = {
+    "num": (RED, [str(i) for i in range(1, 100)]),
+    "presidents": (GREEN, presidents),
+    "states": (BLUE, states),
+}
+BASE_COLOR = "#444444"
 
+LINE_STYLES = {BASE_COLOR: "solid", RED: "dashed", GREEN: "dashdot", BLUE: "dotted"}
+
+matched_street_names = defaultdict(set)
 radius = 500  # meters
-# centers = ["47.68199601897163, -122.35506428651688"]  # seattle fire station
-
 cities = []
 with open("cities.tsv") as f:
     for line in f:
         l = line.split("\t")
         cities.append(l)
 cities = sorted(cities, key=lambda x: x[0])  # sort by city name
-
-# DEBUG
-# radius = 50
-# cities = [["dc", "38.94369946166307, -77.08035303293433", "38.94369946166307, -77.08035303293433"]]
-
-RED = "#e00000"
-GREEN = "#26e026"
-BLUE = "#4370cd"
-
-GRADIENTS = {
-    "num": (RED, [str(i) for i in range(1, 100)]),
-    "presidents": (GREEN, presidents),
-    "states": (BLUE, states),
-}
-PLACEHOLDER = "#444444"
-
-LINE_STYLES = {
-    PLACEHOLDER: "solid",
-    RED: "dashed",
-    GREEN: "dashdot",
-    BLUE: "dotted"
-}
-
 
 def gradient_color(name: str, street_name: str):
     """Return the color for the specified value in this gradient set, or None if this value isn't included"""
@@ -85,58 +72,48 @@ def gradient_color(name: str, street_name: str):
             )
         else:  # "states"
             condition = " " + match_value in " " + street_name
-            # and all(
-            #     match_piece in street_name.split()
-            #     for match_piece in match_value.split()
-            # )
         if condition:
-            kws[match_value].add(street_name)
-            # print("MATCH:", match_value, "STREET NAME:", street_name, "BASE:", base)
+            matched_street_names[match_value].add(street_name)
             return base
-            # clr = colorsys.rgb_to_hsv(*mc.to_rgb(base))
-            # return colorsys.hsv_to_rgb(
-            #     clr[0], clr[1] * (1 - (idx / len(values))), clr[2]
-            # )  # the end white value is considered just outside the list
     return None
 
 
-def road_color(name):
-    if name is None:
-        return PLACEHOLDER
-    if isinstance(name, list):
-        name = " ".join(name)
-    name = name.lower()
-    keywords = name.split(" ")
+def road_color(street_name):
+    if street_name is None:
+        return BASE_COLOR
+    # OSM data allows multiple names on a single way
+    if isinstance(street_name, list):
+        street_name = " ".join(street_name)
+    street_name = street_name.lower()
+    keywords = street_name.split(" ")
 
     for keyword in keywords:
         nums = re.findall("\d+", keyword)
-        # remove a busway in LA
-        # if keyword == "10" or keyword == "i-10":
+        # All the desired numbered streets have an ordinal suffix
+        # There is a busway in LA labeled "10" or "I-10"
         if not any(keyword.endswith(suffix) for suffix in ["st", "nd", "rd", "th"]):
             continue
-        # fun fact, DC has a 13½ street (on gmaps this is 13 1/2)
+        # Fun fact: DC has a 13½th Street (on gmaps this is 13 1/2)
         if nums:
             number = nums[0]
             return gradient_color("num", number)
     for gradient in GRADIENTS:
-        color = gradient_color(gradient, name)
+        color = gradient_color(gradient, street_name)
         if color:
             return color
-    return PLACEHOLDER
+    return BASE_COLOR
 
 
 def process_subgraph(subgraph):
     from osmnx import utils_graph
+
     if len(subgraph.edges()) == 0:
         return None
+    # Remove duplicate edges (in either direction) so that
+    # dashed lines are properly rendered
     subgraph = simplification.simplify_graph(subgraph)
     undirected = utils_graph.get_undirected(subgraph)
     return undirected
-    undirected = nx.MultiGraph(subgraph)
-    ret = nx.MultiDiGraph()
-    ret.add_edges_from(undirected.edges)
-    print(ret)
-    return ret
 
 
 def plot_center(coords, filename):
@@ -153,65 +130,45 @@ def plot_center(coords, filename):
         ((u, v, k), road_color(data.get("name")))
         for u, v, k, data in roads.edges(keys=True, data=True)
     ]
+    # Draw each distinct color as a separate subgraph
     subgraphs = [
         (
-            process_subgraph(roads.edge_subgraph(
-                [edge for edge, clr in edges_with_colors if clr == desired_clr]
-            )),
-            desired_clr,
+            process_subgraph(
+                roads.edge_subgraph(
+                    [
+                        edge
+                        for edge, color in edges_with_colors
+                        if color == desired_color
+                    ]
+                )
+            ),
+            desired_color,
         )
         # most to least common
-        for desired_clr in [PLACEHOLDER]
+        for desired_color in [BASE_COLOR]
         + [GRADIENTS[name][0] for name in ["num", "presidents", "states"]]
     ]
-    # edge_zorder = []
-    # for val in ec:
-    #     zorder = 10
-    #     if val == GRADIENTS["num"][0]:
-    #         zorder = 20
-    #     elif val == GRADIENTS["presidents"][0]:
-    #         zorder = 30
-    #     elif val == GRADIENTS["states"][0]:
-    #         zorder = 40
-    #     edge_zorder.append(zorder)
+
     ax = None
-    for subgraph, desired_clr in subgraphs:
+    for subgraph, desired_color in subgraphs:
         if not subgraph:
             continue
         if len(subgraph.edges()) == 0:
             continue
-        # print(subgraph.edges())
         fig, ax = ox.plot_graph(
             subgraph,
             ax=ax,
             bbox=bbox,
             node_size=0,
-            edge_color=desired_clr,
+            edge_color=desired_color,
             edge_linewidth=1.8,
-            # edge_zorder=edge_zorder,
             show=False,
             close=False,
             bgcolor="#fafafa",
-            # bgcolor="#00000000",  # transparent
-            linestyle=LINE_STYLES[desired_clr],
+            # NOTE: I hacked the library to pass in style keywords
+            # such as this to the underlying gdf_edges.plot
+            linestyle=LINE_STYLES[desired_color],
         )
-    # fig, ax = ox.plot_figure_ground(
-    #     roads,
-    #     node_size=0,
-    #     edge_color=ec,
-    #     dist=radius,
-    #     show=False,
-    #     close=False,
-    #     bgcolor="#000000ff",
-    # )
-    # ax.scatter(long, lat, c="#dd0000")
-    # remove the padding
-    # ax.get_xaxis().set_visible(True)
-    # ax.get_yaxis().set_visible(True)
-    # plt.Circle((long, lat), radius, color="#aaaaaa", fill=False)
-    # line_collection = ax.get_children()[0]
-    # for line in line_collection.lines:
-    #     print(line)
 
     fig.set_frameon(False)
     full_filename = f"{filename}.png"
@@ -219,15 +176,16 @@ def plot_center(coords, filename):
 
     img = Image.open(full_filename)
     img_w, img_h = img.size
+    # Thanks to Jacqui for providing the marker pin art asset!
     marker = Image.open("pin-jacqui-b.png").convert("RGBA")
     old_marker_w, old_marker_h = marker.size
     marker = marker.resize((100, int(old_marker_h / old_marker_w * 100)))
     marker_w, marker_h = marker.size
     img.paste(
-        # btm mid of marker is exact center of img
         marker,
+        # Bottom middle of the marker should be exact center of image
         ((img_w - marker_w) // 2, img_h // 2 - marker_h),
-        marker,  # for transparency
+        marker,  # For transparency
     )
     img.save(full_filename)
     plt.close()
@@ -238,17 +196,10 @@ def to_lat_long(center):
     return [float(i) for i in center.split(", ")]
 
 
-for i, (city, stn_coord, city_hall_coord) in enumerate(cities):
+for i, (city, fire_station_coord, city_hall_coord) in enumerate(cities):
     print(city)
-    # TODO: strip out relevant coords or whatever
-    # doesn't seem too necessary. honestly props to them if they can do it,
-    # seems more fun than the actual id part
-    coords = list(map(to_lat_long, [city_hall_coord, stn_coord]))
-    # coords = sorted(
-    #     [to_lat_long(coord) for coord in [stn_coord, city_hall_coord]],
-    #     key=lambda x: x[1],
-    # )
+    coords = list(map(to_lat_long, [city_hall_coord, fire_station_coord]))
     plot_center(coords[0], f"{i+1}a")
     plot_center(coords[1], f"{i+1}b")
 
-print(kws)
+print(matched_street_names)
