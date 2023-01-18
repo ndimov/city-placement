@@ -122,6 +122,9 @@ def plot_center(coords, filename):
         (lat, long),
         dist=radius,
         truncate_by_edge=True,
+        # This was not included for the puzzle, but you probably want to
+        # for example to keep the NJT in Jersey City's fire station pic
+        retain_all=True,
         network_type="drive",
         simplify=False,  # see SW 1st becoming SW Washington in Portland
     )
